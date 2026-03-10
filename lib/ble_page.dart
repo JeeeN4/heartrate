@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:hive/hive.dart';
 
+// TAMBAHAN UNTUK EXPORT DATA
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:csv/csv.dart';
+
 class BlePage extends StatefulWidget {
   const BlePage({super.key});
 
@@ -54,8 +59,6 @@ class _BlePageState extends State<BlePage> {
       return;
     }
 
-    print("🔍 Start Scan");
-
     setState(() {
       scanResults.clear();
       isScanning = true;
@@ -71,41 +74,25 @@ class _BlePageState extends State<BlePage> {
 
     await Future.delayed(const Duration(seconds: 5));
     setState(() => isScanning = false);
-
-    print("🛑 Scan Finished");
   }
 
   // ================= CONNECT =================
 
   Future<void> connectToDevice(BluetoothDevice device) async {
-    print("🔗 Connecting to ${device.id}");
-
     await device.connect();
     connectedDevice = device;
 
     setState(() => isConnected = true);
 
-    print("✅ Connected");
-
     List<BluetoothService> services = await device.discoverServices();
 
     for (var service in services) {
-      print("🧩 Service: ${service.uuid}");
-
       if (service.uuid == serviceUuid) {
-        print("❤️ Heart Rate Service Found");
-
         for (var c in service.characteristics) {
-          print("   ↳ Char: ${c.uuid}");
-
           if (c.uuid == charUuid) {
-            print("🎯 Heart Rate Characteristic Found");
-
             await c.setNotifyValue(true);
 
             c.lastValueStream.listen((value) {
-              print("📥 Raw: $value");
-
               if (value.isNotEmpty && value.length >= 2) {
                 int flag = value[0];
                 bool is16Bit = flag & 0x01 != 0;
@@ -117,8 +104,6 @@ class _BlePageState extends State<BlePage> {
                   bpm = value[1];
                 }
 
-                print("💓 BPM: $bpm");
-
                 setState(() => heartRate = bpm);
                 saveHeartRate(bpm);
               }
@@ -129,11 +114,43 @@ class _BlePageState extends State<BlePage> {
     }
   }
 
+  // ================= SAVE DATA =================
+
   void saveHeartRate(int bpm) {
     var box = Hive.box('hr_box');
     box.add({'bpm': bpm, 'time': DateTime.now().toIso8601String()});
+  }
 
-    print("💾 Saved: $bpm");
+  // ================= EXPORT DATA =================
+
+  Future<void> exportData() async {
+    var box = Hive.box('hr_box');
+
+    List<List<dynamic>> rows = [];
+    rows.add(["BPM", "Time"]);
+
+    for (var item in box.values) {
+      rows.add([item['bpm'], item['time']]);
+    }
+
+    String csv = const ListToCsvConverter().convert(rows);
+
+    // Folder Download FitSense
+    final directory = Directory('/storage/emulated/0/Download/FitSense');
+
+    // Jika folder belum ada → buat
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+
+    final path = "${directory.path}/heart_rate_data.csv";
+
+    File file = File(path);
+    await file.writeAsString(csv);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Data berhasil disimpan di:\n$path")),
+    );
   }
 
   // ================= UI =================
@@ -153,7 +170,7 @@ class _BlePageState extends State<BlePage> {
       ),
       body: Column(
         children: [
-          // ================= HEART RATE CARD =================
+          // HEART RATE CARD
           Container(
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(20),
@@ -189,7 +206,7 @@ class _BlePageState extends State<BlePage> {
             ),
           ),
 
-          // ================= STATUS =================
+          // STATUS
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -222,7 +239,7 @@ class _BlePageState extends State<BlePage> {
 
           const SizedBox(height: 15),
 
-          // ================= SCAN BUTTON =================
+          // SCAN BUTTON
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SizedBox(
@@ -246,7 +263,31 @@ class _BlePageState extends State<BlePage> {
 
           const SizedBox(height: 10),
 
-          // ================= DEVICE LIST =================
+          // DOWNLOAD DATA BUTTON
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: exportData,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  backgroundColor: Colors.blueAccent,
+                ),
+                child: const Text(
+                  "Download Data Sensor",
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // DEVICE LIST
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -271,9 +312,6 @@ class _BlePageState extends State<BlePage> {
                     trailing: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
                       ),
                       onPressed: () => connectToDevice(result.device),
                       child: const Text("Connect"),
