@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:hive/hive.dart';
 
-// TAMBAHAN UNTUK EXPORT DATA
+// EXPORT DATA
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:csv/csv.dart';
+
+// GRAFIK
+import 'package:fl_chart/fl_chart.dart';
 
 class BlePage extends StatefulWidget {
   const BlePage({super.key});
@@ -20,6 +23,10 @@ class _BlePageState extends State<BlePage> {
   int heartRate = 0;
   bool isScanning = false;
   bool isConnected = false;
+
+  // DATA GRAFIK
+  List<FlSpot> bpmData = [];
+  double time = 0;
 
   final Guid serviceUuid = Guid("0000180d-0000-1000-8000-00805f9b34fb");
   final Guid charUuid = Guid("00002a37-0000-1000-8000-00805f9b34fb");
@@ -64,7 +71,7 @@ class _BlePageState extends State<BlePage> {
       isScanning = true;
     });
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+      FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
 
     FlutterBluePlus.scanResults.listen((results) {
       setState(() {
@@ -82,7 +89,10 @@ class _BlePageState extends State<BlePage> {
     await device.connect();
     connectedDevice = device;
 
-    setState(() => isConnected = true);
+    setState(() {
+      isConnected = true;
+      scanResults.clear(); // HILANGKAN LIST SCAN
+    });
 
     List<BluetoothService> services = await device.discoverServices();
 
@@ -104,13 +114,39 @@ class _BlePageState extends State<BlePage> {
                   bpm = value[1];
                 }
 
-                setState(() => heartRate = bpm);
+                setState(() {
+                  heartRate = bpm;
+
+                  bpmData.add(FlSpot(time, bpm.toDouble()));
+                  time += 1;
+
+                  if (bpmData.length > 20) {
+                    bpmData.removeAt(0);
+                  }
+                });
+
                 saveHeartRate(bpm);
               }
             });
           }
         }
       }
+    }
+  }
+
+  // ================= DISCONNECT =================
+
+  Future<void> disconnectDevice() async {
+    if (connectedDevice != null) {
+      await connectedDevice!.disconnect();
+
+      setState(() {
+        isConnected = false;
+        connectedDevice = null;
+        heartRate = 0;
+        bpmData.clear();
+        time = 0;
+      });
     }
   }
 
@@ -206,6 +242,38 @@ class _BlePageState extends State<BlePage> {
             ),
           ),
 
+          // GRAFIK BPM
+          Container(
+            height: 200,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: const [
+                BoxShadow(color: Colors.black12, blurRadius: 6),
+              ],
+            ),
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: bpmData,
+                    isCurved: true,
+                    color: Colors.redAccent,
+                    barWidth: 3,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
           // STATUS
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -263,7 +331,7 @@ class _BlePageState extends State<BlePage> {
 
           const SizedBox(height: 10),
 
-          // DOWNLOAD DATA BUTTON
+          // DOWNLOAD DATA
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: SizedBox(
@@ -287,40 +355,66 @@ class _BlePageState extends State<BlePage> {
 
           const SizedBox(height: 10),
 
-          // DEVICE LIST
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: scanResults.length,
-              itemBuilder: (context, index) {
-                final result = scanResults[index];
-
-                return Card(
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.all(12),
-                    title: Text(
-                      result.device.name.isNotEmpty
-                          ? result.device.name
-                          : "Unknown Device",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+          // DISCONNECT BUTTON
+          if (isConnected)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: disconnectDevice,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
                     ),
-                    subtitle: Text(result.device.id.toString()),
-                    trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                      onPressed: () => connectToDevice(result.device),
-                      child: const Text("Connect"),
-                    ),
+                    backgroundColor: Colors.black87,
                   ),
-                );
-              },
+                  child: const Text(
+                    "Disconnect Device",
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
             ),
-          ),
+
+          const SizedBox(height: 10),
+
+          // DEVICE LIST (HANYA JIKA BELUM CONNECT)
+          if (!isConnected)
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: scanResults.length,
+                itemBuilder: (context, index) {
+                  final result = scanResults[index];
+
+                  return Card(
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.all(12),
+                      title: Text(
+                        result.device.name.isNotEmpty
+                            ? result.device.name
+                            : "Unknown Device",
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(result.device.id.toString()),
+                      trailing: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                        ),
+                        onPressed: () => connectToDevice(result.device),
+                        child: const Text("Connect"),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
