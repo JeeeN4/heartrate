@@ -10,6 +10,10 @@ import 'package:csv/csv.dart';
 // GRAFIK
 import 'package:fl_chart/fl_chart.dart';
 
+// HTTP
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
 class BlePage extends StatefulWidget {
   const BlePage({super.key});
 
@@ -30,6 +34,45 @@ class _BlePageState extends State<BlePage> {
 
   final Guid serviceUuid = Guid("0000180d-0000-1000-8000-00805f9b34fb");
   final Guid charUuid = Guid("00002a37-0000-1000-8000-00805f9b34fb");
+
+  // 🔥 THROTTLE
+  DateTime? lastSent;
+
+  // ================= SEND TO SERVER =================
+
+  Future<void> sendHRToServer(int bpm) async {
+    final now = DateTime.now();
+
+    // throttle 1 detik
+    if (lastSent != null && now.difference(lastSent!).inMilliseconds < 1000) {
+      return;
+    }
+
+    lastSent = now;
+
+    final url = Uri.parse(
+      'https://webhook.site/bb761321-fe4a-4d99-ab5a-2ca88f17c996',
+    );
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "memberId": "u1",
+          "bpm": bpm,
+          "ts": DateTime.now().millisecondsSinceEpoch,
+          "deviceId": connectedDevice?.id.toString(),
+          "source": "flutter",
+        }),
+      );
+
+      print("✅ SENT BPM: $bpm");
+      print("STATUS: ${response.statusCode}");
+    } catch (e) {
+      print("❌ ERROR: $e");
+    }
+  }
 
   // ================= BLUETOOTH CHECK =================
 
@@ -71,7 +114,7 @@ class _BlePageState extends State<BlePage> {
       isScanning = true;
     });
 
-      FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+    FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
 
     FlutterBluePlus.scanResults.listen((results) {
       setState(() {
@@ -91,7 +134,7 @@ class _BlePageState extends State<BlePage> {
 
     setState(() {
       isConnected = true;
-      scanResults.clear(); // HILANGKAN LIST SCAN
+      scanResults.clear();
     });
 
     List<BluetoothService> services = await device.discoverServices();
@@ -114,6 +157,8 @@ class _BlePageState extends State<BlePage> {
                   bpm = value[1];
                 }
 
+                print("❤️ BPM DETECTED: $bpm");
+
                 setState(() {
                   heartRate = bpm;
 
@@ -126,6 +171,9 @@ class _BlePageState extends State<BlePage> {
                 });
 
                 saveHeartRate(bpm);
+
+                // 🔥 KIRIM KE WEBHOOK
+                sendHRToServer(bpm);
               }
             });
           }
@@ -171,10 +219,8 @@ class _BlePageState extends State<BlePage> {
 
     String csv = const ListToCsvConverter().convert(rows);
 
-    // Folder Download FitSense
     final directory = Directory('/storage/emulated/0/Download/FitSense');
 
-    // Jika folder belum ada → buat
     if (!await directory.exists()) {
       await directory.create(recursive: true);
     }
@@ -194,228 +240,243 @@ class _BlePageState extends State<BlePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.redAccent,
-        title: const Text(
-          "Heart Rate Monitor",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // HEART RATE CARD
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Colors.redAccent, Colors.pinkAccent],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.redAccent.withOpacity(0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  "Current Heart Rate",
-                  style: TextStyle(color: Colors.white70, fontSize: 16),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  "$heartRate BPM",
-                  style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // HEADER
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.favorite, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text(
+                        "Precision & Pulse",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          ),
+                  const Icon(Icons.notifications_none),
+                ],
+              ),
 
-          // GRAFIK BPM
-          Container(
-            height: 200,
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 6),
-              ],
-            ),
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(show: true),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: bpmData,
-                    isCurved: true,
-                    color: Colors.redAccent,
-                    barWidth: 3,
-                    dotData: FlDotData(show: false),
+              const SizedBox(height: 24),
+
+              // TITLE
+              const Text(
+                "REAL-TIME READING",
+                style: TextStyle(color: Colors.brown, letterSpacing: 1.2),
+              ),
+
+              const SizedBox(height: 8),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Cardiac Rhythm",
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isConnected
+                          ? Colors.green.shade100
+                          : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      isConnected ? "● Active" : "● Offline",
+                      style: TextStyle(
+                        color: isConnected ? Colors.green : Colors.grey,
+                      ),
+                    ),
                   ),
                 ],
               ),
-            ),
-          ),
 
-          const SizedBox(height: 10),
+              const SizedBox(height: 16),
 
-          // STATUS
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: isConnected
-                  ? Colors.green[100]
-                  : isScanning
-                  ? Colors.orange[100]
-                  : Colors.red[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                isConnected
-                    ? "🟢 Connected"
-                    : isScanning
-                    ? "🟡 Scanning..."
-                    : "🔴 Disconnected",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: isConnected
-                      ? Colors.green
-                      : isScanning
-                      ? Colors.orange
-                      : Colors.red,
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 15),
-
-          // SCAN BUTTON
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: startScan,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  backgroundColor: Colors.redAccent,
-                ),
-                child: const Text(
-                  "Scan BLE Devices",
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // DOWNLOAD DATA
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: exportData,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  backgroundColor: Colors.blueAccent,
-                ),
-                child: const Text(
-                  "Download Data Sensor",
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // DISCONNECT BUTTON
-          if (isConnected)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SizedBox(
+              // HEART RATE CARD
+              Container(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: disconnectDevice,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  children: [
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: "$heartRate",
+                            style: const TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: " BPM",
+                            style: TextStyle(fontSize: 20, color: Colors.red),
+                          ),
+                        ],
+                      ),
                     ),
-                    backgroundColor: Colors.black87,
-                  ),
-                  child: const Text(
-                    "Disconnect Device",
-                    style: TextStyle(fontSize: 16),
+                    const SizedBox(height: 8),
+                    Text(
+                      isConnected
+                          ? "Resting Rate • Monitoring"
+                          : "Device not connected",
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // 🔥 REAL CHART (pakai data kamu)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: SizedBox(
+                  height: 150,
+                  child: LineChart(
+                    LineChartData(
+                      gridData: FlGridData(show: false),
+                      titlesData: FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: bpmData,
+                          isCurved: true,
+                          dotData: FlDotData(show: false),
+                          color: Colors.red,
+                          barWidth: 3,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
 
-          const SizedBox(height: 10),
+              const SizedBox(height: 20),
 
-          // DEVICE LIST (HANYA JIKA BELUM CONNECT)
-          if (!isConnected)
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: scanResults.length,
-                itemBuilder: (context, index) {
-                  final result = scanResults[index];
-
-                  return Card(
-                    elevation: 3,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+              // STATUS
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: isConnected ? Colors.green : Colors.grey,
+                      child: const Icon(Icons.bluetooth, color: Colors.white),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(12),
-                      title: Text(
-                        result.device.name.isNotEmpty
-                            ? result.device.name
-                            : "Unknown Device",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(result.device.id.toString()),
-                      trailing: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                        ),
-                        onPressed: () => connectToDevice(result.device),
-                        child: const Text("Connect"),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        isConnected
+                            ? "Connected - ${connectedDevice?.platformName ?? 'Device'}"
+                            : "Not Connected",
+                        style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ),
-                  );
-                },
+                    if (isConnected) const Text("Live"),
+                  ],
+                ),
               ),
-            ),
-        ],
+
+              const SizedBox(height: 20),
+
+              // BUTTONS
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: startScan,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey.shade300,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: Text(isScanning ? "Scanning..." : "Scan Device"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: isConnected ? disconnectDevice : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text("Disconnect"),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // DOWNLOAD
+              GestureDetector(
+                onTap: exportData,
+                child: const Center(
+                  child: Text(
+                    "Download Historical Data",
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // 🔥 LIST DEVICE (opsional tapi penting biar connect jalan)
+              Expanded(
+                child: ListView.builder(
+                  itemCount: scanResults.length,
+                  itemBuilder: (context, index) {
+                    final r = scanResults[index];
+                    final device = r.device;
+
+                    return ListTile(
+                      title: Text(
+                        device.platformName.isNotEmpty
+                            ? device.platformName
+                            : device.id.toString(),
+                      ),
+                      subtitle: Text(r.rssi.toString()),
+                      onTap: () => connectToDevice(device),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
