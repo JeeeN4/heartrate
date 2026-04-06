@@ -137,6 +137,21 @@ class _BlePageState extends State<BlePage> {
       scanResults.clear();
     });
 
+    // 🔥 LISTEN CONNECTION STATE
+    device.connectionState.listen((state) {
+      if (state == BluetoothConnectionState.disconnected) {
+        print("❌ DEVICE DISCONNECTED");
+
+        setState(() {
+          isConnected = false;
+          connectedDevice = null;
+          heartRate = 0;
+          bpmData.clear();
+          time = 0;
+        });
+      }
+    });
+
     List<BluetoothService> services = await device.discoverServices();
 
     for (var service in services) {
@@ -412,25 +427,36 @@ class _BlePageState extends State<BlePage> {
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton(
+                    child: ElevatedButton.icon(
                       onPressed: startScan,
+                      icon: Image.asset(
+                        "assets/icons/scan.png",
+                        width: 20,
+                        height: 20,
+                      ),
+                      label: Text(isScanning ? "Scanning..." : "Scan Device"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.grey.shade300,
                         foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: Text(isScanning ? "Scanning..." : "Scan Device"),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
+                    child: ElevatedButton.icon(
                       onPressed: isConnected ? disconnectDevice : null,
+                      icon: Image.asset(
+                        "assets/icons/disconnect.png",
+                        width: 20,
+                        height: 20,
+                        color: isConnected ? Colors.white : Colors.grey,
+                      ),
+                      label: const Text("Disconnect"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: const Text("Disconnect"),
                     ),
                   ),
                 ],
@@ -441,12 +467,38 @@ class _BlePageState extends State<BlePage> {
               // DOWNLOAD
               GestureDetector(
                 onTap: exportData,
-                child: const Center(
-                  child: Text(
-                    "Download Historical Data",
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w500,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Colors.red,
+                        width: 1,
+                      ), // 🔥 border tipis
+                      borderRadius: BorderRadius.circular(25),
+                      color: Colors.transparent, // biar clean (no shadow)
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min, // biar ga full lebar
+                      children: [
+                        Image.asset(
+                          "assets/icons/download.png",
+                          width: 20,
+                          height: 20,
+                          color: Colors.red, // 🔥 icon ikut warna text
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          "Download Historical Data",
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
