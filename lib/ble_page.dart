@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:hive/hive.dart';
 
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
+import '../services/ble_service.dart';
+
 // EXPORT DATA
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -39,40 +43,7 @@ class _BlePageState extends State<BlePage> {
   DateTime? lastSent;
 
   // ================= SEND TO SERVER =================
-
-  Future<void> sendHRToServer(int bpm) async {
-    final now = DateTime.now();
-
-    // throttle 1 detik
-    if (lastSent != null && now.difference(lastSent!).inMilliseconds < 1000) {
-      return;
-    }
-
-    lastSent = now;
-
-    final url = Uri.parse(
-      'https://webhook.site/bb761321-fe4a-4d99-ab5a-2ca88f17c996',
-    );
-
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "memberId": "u1",
-          "bpm": bpm,
-          "ts": DateTime.now().millisecondsSinceEpoch,
-          "deviceId": connectedDevice?.id.toString(),
-          "source": "flutter",
-        }),
-      );
-
-      print("✅ SENT BPM: $bpm");
-      print("STATUS: ${response.statusCode}");
-    } catch (e) {
-      print("❌ ERROR: $e");
-    }
-  }
+  final apiService = ApiService();
 
   // ================= BLUETOOTH CHECK =================
 
@@ -100,9 +71,10 @@ class _BlePageState extends State<BlePage> {
   }
 
   // ================= SCAN =================
+  final bleService = BleService();
 
   Future<void> startScan() async {
-    bool btOn = await isBluetoothOn();
+    bool btOn = await bleService.isBluetoothOn();
 
     if (!btOn) {
       showBluetoothDialog();
@@ -114,22 +86,25 @@ class _BlePageState extends State<BlePage> {
       isScanning = true;
     });
 
-    FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-
-    FlutterBluePlus.scanResults.listen((results) {
+    bleService.scanDevices().listen((results) {
       setState(() {
         scanResults = results;
       });
     });
 
     await Future.delayed(const Duration(seconds: 5));
+
     setState(() => isScanning = false);
+
+    print("SCAN STARTED");
+
+    FlutterBluePlus.scanResults.listen((results) {
+      print("RESULT COUNT: ${results.length}");
+    });
   }
 
   // ================= CONNECT =================
-
   Future<void> connectToDevice(BluetoothDevice device) async {
-    await device.connect();
     connectedDevice = device;
 
     setState(() {
@@ -137,11 +112,31 @@ class _BlePageState extends State<BlePage> {
       scanResults.clear();
     });
 
-    // 🔥 LISTEN CONNECTION STATE
-    device.connectionState.listen((state) {
-      if (state == BluetoothConnectionState.disconnected) {
-        print("❌ DEVICE DISCONNECTED");
+    await bleService.connectToDevice(
+      device,
+      (bpm) {
+        print("❤️ BPM DETECTED: $bpm");
 
+        setState(() {
+          heartRate = bpm;
+
+          bpmData.add(FlSpot(time, bpm.toDouble()));
+          time += 1;
+
+          if (bpmData.length > 20) {
+            bpmData.removeAt(0);
+          }
+        });
+
+        storageService.saveHR(bpm);
+
+        apiService.sendHR(
+          bpm: bpm,
+          memberId: "u1",
+          deviceId: connectedDevice?.id.toString(),
+        );
+      },
+      () {
         setState(() {
           isConnected = false;
           connectedDevice = null;
@@ -149,59 +144,14 @@ class _BlePageState extends State<BlePage> {
           bpmData.clear();
           time = 0;
         });
-      }
-    });
-
-    List<BluetoothService> services = await device.discoverServices();
-
-    for (var service in services) {
-      if (service.uuid == serviceUuid) {
-        for (var c in service.characteristics) {
-          if (c.uuid == charUuid) {
-            await c.setNotifyValue(true);
-
-            c.lastValueStream.listen((value) {
-              if (value.isNotEmpty && value.length >= 2) {
-                int flag = value[0];
-                bool is16Bit = flag & 0x01 != 0;
-
-                int bpm;
-                if (is16Bit && value.length >= 3) {
-                  bpm = value[1] | (value[2] << 8);
-                } else {
-                  bpm = value[1];
-                }
-
-                print("❤️ BPM DETECTED: $bpm");
-
-                setState(() {
-                  heartRate = bpm;
-
-                  bpmData.add(FlSpot(time, bpm.toDouble()));
-                  time += 1;
-
-                  if (bpmData.length > 20) {
-                    bpmData.removeAt(0);
-                  }
-                });
-
-                saveHeartRate(bpm);
-
-                // 🔥 KIRIM KE WEBHOOK
-                sendHRToServer(bpm);
-              }
-            });
-          }
-        }
-      }
-    }
+      },
+    );
   }
 
   // ================= DISCONNECT =================
-
   Future<void> disconnectDevice() async {
     if (connectedDevice != null) {
-      await connectedDevice!.disconnect();
+      await bleService.disconnect(connectedDevice!);
 
       setState(() {
         isConnected = false;
@@ -214,7 +164,7 @@ class _BlePageState extends State<BlePage> {
   }
 
   // ================= SAVE DATA =================
-
+  final storageService = StorageService();
   void saveHeartRate(int bpm) {
     var box = Hive.box('hr_box');
     box.add({'bpm': bpm, 'time': DateTime.now().toIso8601String()});
@@ -223,27 +173,7 @@ class _BlePageState extends State<BlePage> {
   // ================= EXPORT DATA =================
 
   Future<void> exportData() async {
-    var box = Hive.box('hr_box');
-
-    List<List<dynamic>> rows = [];
-    rows.add(["BPM", "Time"]);
-
-    for (var item in box.values) {
-      rows.add([item['bpm'], item['time']]);
-    }
-
-    String csv = const ListToCsvConverter().convert(rows);
-
-    final directory = Directory('/storage/emulated/0/Download/FitSense');
-
-    if (!await directory.exists()) {
-      await directory.create(recursive: true);
-    }
-
-    final path = "${directory.path}/heart_rate_data.csv";
-
-    File file = File(path);
-    await file.writeAsString(csv);
+    final path = await storageService.exportCSV();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Data berhasil disimpan di:\n$path")),
@@ -455,6 +385,8 @@ class _BlePageState extends State<BlePage> {
                       label: const Text("Disconnect"),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: Colors.grey,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
                     ),
@@ -514,14 +446,16 @@ class _BlePageState extends State<BlePage> {
                     final r = scanResults[index];
                     final device = r.device;
 
-                    return ListTile(
-                      title: Text(
-                        device.platformName.isNotEmpty
-                            ? device.platformName
-                            : device.id.toString(),
+                    return Card(
+                      child: ListTile(
+                        title: Text(
+                          device.platformName.isNotEmpty
+                              ? device.platformName
+                              : "Unknown Device",
+                        ),
+                        subtitle: Text("ID: ${device.id}\nRSSI: ${r.rssi}"),
+                        onTap: () => connectToDevice(device),
                       ),
-                      subtitle: Text(r.rssi.toString()),
-                      onTap: () => connectToDevice(device),
                     );
                   },
                 ),
