@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   DateTime? lastSent;
 
-  final String baseUrl = "http://10.221.114.167:3001";
+  final String baseUrl = "http://10.221.107.12:3001";
 
   Future<void> sendHR({
     required int bpm,

@@ -6,6 +6,12 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/ble_service.dart';
 
+// WIDGETS
+import '../widgets/heart_rate_card.dart';
+import '../widgets/bpm_chart.dart';
+import '../widgets/device_list.dart';
+import '../widgets/action_buttons.dart';
+
 // EXPORT DATA
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -254,73 +260,12 @@ class _BlePageState extends State<BlePage> {
               const SizedBox(height: 16),
 
               // HEART RATE CARD
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  children: [
-                    RichText(
-                      text: TextSpan(
-                        children: [
-                          TextSpan(
-                            text: "$heartRate",
-                            style: const TextStyle(
-                              fontSize: 48,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const TextSpan(
-                            text: " BPM",
-                            style: TextStyle(fontSize: 20, color: Colors.red),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isConnected
-                          ? "Resting Rate • Monitoring"
-                          : "Device not connected",
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
+              HeartRateCard(heartRate: heartRate, isConnected: isConnected),
 
               const SizedBox(height: 20),
 
               // 🔥 REAL CHART (pakai data kamu)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: SizedBox(
-                  height: 150,
-                  child: LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: false),
-                      titlesData: FlTitlesData(show: false),
-                      borderData: FlBorderData(show: false),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: bpmData,
-                          isCurved: true,
-                          dotData: FlDotData(show: false),
-                          color: Colors.red,
-                          barWidth: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              BpmChart(bpmData: bpmData),
 
               const SizedBox(height: 20),
 
@@ -354,110 +299,21 @@ class _BlePageState extends State<BlePage> {
               const SizedBox(height: 20),
 
               // BUTTONS
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: startScan,
-                      icon: Image.asset(
-                        "assets/icons/scan.png",
-                        width: 20,
-                        height: 20,
-                      ),
-                      label: Text(isScanning ? "Scanning..." : "Scan Device"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey.shade300,
-                        foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: isConnected ? disconnectDevice : null,
-                      icon: Image.asset(
-                        "assets/icons/disconnect.png",
-                        width: 20,
-                        height: 20,
-                        color: isConnected ? Colors.white : Colors.grey,
-                      ),
-                      label: const Text("Disconnect"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        disabledForegroundColor: Colors.grey,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // DOWNLOAD
-              GestureDetector(
-                onTap: exportData,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.red,
-                        width: 1,
-                      ), // 🔥 border tipis
-                      borderRadius: BorderRadius.circular(25),
-                      color: Colors.transparent, // biar clean (no shadow)
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min, // biar ga full lebar
-                      children: [
-                        Image.asset(
-                          "assets/icons/download.png",
-                          width: 20,
-                          height: 20,
-                          color: Colors.red, // 🔥 icon ikut warna text
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          "Download Historical Data",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              ActionButtons(
+                isScanning: isScanning,
+                isConnected: isConnected,
+                onScan: startScan,
+                onDisconnect: disconnectDevice,
+                onDownload: exportData,
               ),
 
               const SizedBox(height: 20),
 
               // 🔥 LIST DEVICE (opsional tapi penting biar connect jalan)
               Expanded(
-                child: ListView.builder(
-                  itemCount: scanResults.length,
-                  itemBuilder: (context, index) {
-                    final r = scanResults[index];
-                    final device = r.device;
-
-                    return Card(
-                      child: ListTile(
-                        title: Text(
-                          device.platformName.isNotEmpty
-                              ? device.platformName
-                              : "Unknown Device",
-                        ),
-                        subtitle: Text("ID: ${device.id}\nRSSI: ${r.rssi}"),
-                        onTap: () => connectToDevice(device),
-                      ),
-                    );
-                  },
+                child: DeviceList(
+                  scanResults: scanResults,
+                  onTap: connectToDevice,
                 ),
               ),
             ],
