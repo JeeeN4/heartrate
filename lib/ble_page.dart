@@ -5,12 +5,13 @@ import 'package:hive/hive.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/ble_service.dart';
+import '../services/socket_service.dart';
 
 // WIDGETS
 import '../widgets/heart_rate_card.dart';
 import '../widgets/bpm_chart.dart';
-import '../widgets/device_list.dart';
 import '../widgets/action_buttons.dart';
+import '../widgets/device_bottom_sheet.dart';
 
 // EXPORT DATA
 import 'dart:io';
@@ -48,6 +49,25 @@ class _BlePageState extends State<BlePage> {
   // 🔥 THROTTLE
   DateTime? lastSent;
 
+  // ================= SOCKET.IO =================
+  final socketService = SocketService();
+  @override
+  void initState() {
+    super.initState();
+
+    socketService.connect();
+
+    socketService.listenHR((data) {
+      print("REALTIME FROM SERVER: $data");
+    });
+  }
+
+  @override
+  void dispose() {
+    socketService.dispose(); // 🔥 taruh di sini
+    super.dispose();
+  }
+
   // ================= SEND TO SERVER =================
   final apiService = ApiService();
 
@@ -76,15 +96,31 @@ class _BlePageState extends State<BlePage> {
     );
   }
 
+  // ================= Device List =================
+  void showDeviceBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DeviceBottomSheet(
+          scanResults: scanResults,
+          isScanning: isScanning,
+          onConnect: connectToDevice,
+        );
+      },
+    );
+  }
+
   // ================= SCAN =================
   final bleService = BleService();
 
-  Future<void> startScan() async {
+  Future<bool> startScan() async {
     bool btOn = await bleService.isBluetoothOn();
 
     if (!btOn) {
       showBluetoothDialog();
-      return;
+      return false; // 🔥 tambahin ini
     }
 
     setState(() {
@@ -107,6 +143,8 @@ class _BlePageState extends State<BlePage> {
     FlutterBluePlus.scanResults.listen((results) {
       print("RESULT COUNT: ${results.length}");
     });
+
+    return true; // 🔥 tambahin ini
   }
 
   // ================= CONNECT =================
@@ -152,12 +190,14 @@ class _BlePageState extends State<BlePage> {
         });
       },
     );
+    await apiService.sendConnect("u1");
   }
 
   // ================= DISCONNECT =================
   Future<void> disconnectDevice() async {
     if (connectedDevice != null) {
       await bleService.disconnect(connectedDevice!);
+      await apiService.sendDisconnect("u1");
 
       setState(() {
         isConnected = false;
@@ -302,20 +342,18 @@ class _BlePageState extends State<BlePage> {
               ActionButtons(
                 isScanning: isScanning,
                 isConnected: isConnected,
-                onScan: startScan,
+                onScan: () async {
+                  bool success = await startScan();
+
+                  if (success) {
+                    showDeviceBottomSheet();
+                  }
+                },
                 onDisconnect: disconnectDevice,
                 onDownload: exportData,
               ),
 
               const SizedBox(height: 20),
-
-              // 🔥 LIST DEVICE (opsional tapi penting biar connect jalan)
-              Expanded(
-                child: DeviceList(
-                  scanResults: scanResults,
-                  onTap: connectToDevice,
-                ),
-              ),
             ],
           ),
         ),
