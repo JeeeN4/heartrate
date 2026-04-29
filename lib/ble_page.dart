@@ -36,6 +36,7 @@ class _BlePageState extends State<BlePage> {
   List<ScanResult> scanResults = [];
   BluetoothDevice? connectedDevice;
   int heartRate = 0;
+  int batteryLevel = 0;
   bool isScanning = false;
   bool isConnected = false;
 
@@ -189,6 +190,13 @@ class _BlePageState extends State<BlePage> {
           time = 0;
         });
       },
+      onBattery: (battery) {
+        print("🔋 Battery: $battery");
+
+        setState(() {
+          batteryLevel = battery;
+        });
+      },
     );
     await apiService.sendConnect("u1");
   }
@@ -323,6 +331,8 @@ class _BlePageState extends State<BlePage> {
                       child: const Icon(Icons.bluetooth, color: Colors.white),
                     ),
                     const SizedBox(width: 12),
+
+                    // 🔥 TEXT STATUS
                     Expanded(
                       child: Text(
                         isConnected
@@ -331,7 +341,16 @@ class _BlePageState extends State<BlePage> {
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ),
-                    if (isConnected) const Text("Live"),
+
+                    // 🔥 BATTERY (KANAN)
+                    if (isConnected)
+                      Text(
+                        "$batteryLevel%",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
                   ],
                 ),
               ),

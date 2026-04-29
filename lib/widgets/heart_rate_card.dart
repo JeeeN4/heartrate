@@ -41,9 +41,7 @@ class HeartRateCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            isConnected
-                ? "Resting Rate • Monitoring"
-                : "Device not connected",
+            isConnected ? "Resting Rate • Monitoring" : "Device not connected",
             style: const TextStyle(color: Colors.grey),
           ),
         ],

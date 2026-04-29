@@ -3,12 +3,20 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 class BleService {
   final Guid serviceUuid = Guid("0000180d-0000-1000-8000-00805f9b34fb");
   final Guid charUuid = Guid("00002a37-0000-1000-8000-00805f9b34fb");
+  final Guid batteryServiceUuid = Guid("0000180f-0000-1000-8000-00805f9b34fb");
+  final Guid batteryCharUuid = Guid("00002a19-0000-1000-8000-00805f9b34fb");
 
   // ================= SCAN =================
 
   Stream<List<ScanResult>> scanDevices() {
     FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
-    return FlutterBluePlus.scanResults;
+    return FlutterBluePlus.scanResults.map((results) {
+      return results.where((r) {
+        return r.advertisementData.serviceUuids.any(
+          (uuid) => uuid.toString().toLowerCase().contains("180d"),
+        );
+      }).toList();
+    });
   }
 
   // ================= CONNECT =================
@@ -16,8 +24,9 @@ class BleService {
   Future<void> connectToDevice(
     BluetoothDevice device,
     Function(int bpm) onData,
-    Function() onDisconnect,
-  ) async {
+    Function() onDisconnect, {
+    Function(int battery)? onBattery,
+  }) async {
     await device.connect();
 
     // listen disconnect
@@ -51,6 +60,23 @@ class BleService {
                 onData(bpm); // 🔥 kirim ke UI
               }
             });
+          }
+        }
+      }
+
+      // 🔋 BATTERY SERVICE
+      if (service.uuid == batteryServiceUuid) {
+        for (var c in service.characteristics) {
+          if (c.uuid == batteryCharUuid) {
+            var value = await c.read();
+
+            if (value.isNotEmpty) {
+              int batteryLevel = value[0];
+
+              print("🔋 Battery: $batteryLevel%");
+
+              onBattery?.call(batteryLevel);
+            }
           }
         }
       }
