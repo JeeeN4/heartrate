@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'ble_page.dart';
+import 'screens/ble_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
