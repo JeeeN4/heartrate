@@ -31,14 +31,14 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-class BlePage extends StatefulWidget {
-  const BlePage({super.key});
+class BleScreen extends StatefulWidget {
+  const BleScreen({super.key});
 
   @override
-  State<BlePage> createState() => _BlePageState();
+  State<BleScreen> createState() => _BleScreenState();
 }
 
-class _BlePageState extends State<BlePage> {
+class _BleScreenState extends State<BleScreen> {
   List<ScanResult> scanResults = [];
   BluetoothDevice? connectedDevice;
   int heartRate = 0;
