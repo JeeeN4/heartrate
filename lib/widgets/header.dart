@@ -3,7 +3,9 @@ import '../constants/app_spacing.dart';
 import '../constants/app_text_style.dart';
 
 class Header extends StatelessWidget {
-  const Header({super.key});
+  final VoidCallback onLogout;
+
+  const Header({super.key, required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +19,7 @@ class Header extends StatelessWidget {
             Text("Precision & Pulse", style: AppTextStyle.subtitle),
           ],
         ),
-        const Icon(Icons.notifications_none),
+        IconButton(icon: const Icon(Icons.logout), onPressed: onLogout),
       ],
     );
   }

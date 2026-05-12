@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/ble_service.dart';
 import '../services/socket_service.dart';
+import '../services/auth/auth_storage_service.dart';
 
 // WIDGETS
 import '../widgets/header.dart';
@@ -14,6 +15,7 @@ import '../widgets/bpm_chart.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/device_bottom_sheet.dart';
 import '../widgets/status_card.dart';
+import 'auth/login_screen.dart';
 
 //constants
 import '../constants/app_spacing.dart';
@@ -142,7 +144,7 @@ class _BleScreenState extends State<BleScreen> {
 
     setState(() => isScanning = false);
 
-    return true; // 🔥 tambahin ini
+    return true;
   }
 
   // ================= CONNECT =================
@@ -227,6 +229,20 @@ class _BleScreenState extends State<BleScreen> {
     );
   }
 
+  // ================= LOGOUT =================
+  final authStorage = AuthStorageService();
+
+  Future<void> logout() async {
+    await authStorage.removeToken();
+
+    if (!mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
   // ================= UI =================
 
   @override
@@ -240,7 +256,7 @@ class _BleScreenState extends State<BleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // HEADER
-              const Header(),
+              Header(onLogout: logout),
 
               AppSpacing.h24,
 

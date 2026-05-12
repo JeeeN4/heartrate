@@ -5,7 +5,7 @@ class SocketService {
 
   void connect() {
     socket = IO.io(
-      'http://10.221.230.94:3001', // 🔥 ganti IP kamu
+      'http://10.221.200.84:3001', // 🔥 ganti IP kamu
       IO.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
